@@ -1,23 +1,10 @@
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Security.Cryptography.X509Certificates;
+using TemplateTool;
+using System.Text.Json;
+using System.IO;
 
-String RootFolder = "SoloPlugins";
-String SubFolder = "Systems";
-String TemplatePlugin = "SoloTemplate";
-String TemplateDir = "Templates";
-
-// this function gathers all of the files in the given folder
-String[] GatherFiles(String SourceDir, bool SkipIntermediate)
-{
-	// get all of the files in the given 
-	String[] Files = Directory.GetFiles(SourceDir, "*.*", SearchOption.AllDirectories);
-
-	if (SkipIntermediate)
-	{
-		// filter out any files that's in a BINARIES or INTERMEDIATE folder
-		Files = Files.Where(x => !x.Contains("Binaries") && !x.Contains("Intermediate")).ToArray();
-	}
-	return Files;
-}
 
 const ConsoleColor ParamColor = ConsoleColor.Yellow;
 const ConsoleColor NormalText = ConsoleColor.White;
@@ -64,6 +51,36 @@ void WriteFormattedLine(string format, params string[] answers )
 }
 
 
+
+// read paramters from a json file 
+// parse the file and replace any substring with the new plugin name
+// get the current working directory
+String CurrentDirectory = Directory.GetCurrentDirectory();
+
+String ConfigFile = CurrentDirectory+"\\Config.json";
+
+if ( !File.Exists(ConfigFile) )
+{
+	FormattedLineDefaultColor = ConsoleColor.Red;
+	WriteFormattedLine("Failed to find `{0}`!\n", ConfigFile);
+	return;
+}
+String ConfigJSon = File.ReadAllText(ConfigFile);
+ConfigParams? Config = JsonSerializer.Deserialize<ConfigParams>(ConfigJSon);
+
+if (Config == null
+	|| Config.RootFolder == null
+	|| Config.SubFolder == null
+	|| Config.TemplatePlugin == null
+	|| Config.TemplateDir == null
+	)
+{
+	FormattedLineDefaultColor = ConsoleColor.Red;
+	WriteFormattedLine("Failed to parse `{0}`!\n", ConfigFile);
+	return;
+}
+
+
 void FatalError(String Message)
 {
 	const ConsoleColor ErrorColor = ConsoleColor.Red;
@@ -80,10 +97,10 @@ void FatalError(String Message)
 	/// new plugin
 
 	Console.ForegroundColor = NormalText;
-	Console.WriteLine("\tTemplateTool -command new SoloNewPlugin");
+	Console.WriteLine("\tTemplateTool -command new NewPlugin");
 	Console.ForegroundColor = InfoColor;
 
-	WriteFormattedLine("Clones the template project from '{0}\\{1}' to the '{2}' subfolder.", TemplateDir, TemplatePlugin, SubFolder );
+	WriteFormattedLine("Clones the template project from '{0}\\{1}' to the '{2}' subfolder.", Config.TemplateDir, Config.TemplatePlugin, Config.SubFolder);
 	Console.WriteLine("The folder will be deleted completely - so make sure to use UPDATE for existing plugins.\n");
 
 
@@ -91,16 +108,16 @@ void FatalError(String Message)
 	/// update plugin
 
 	Console.ForegroundColor = NormalText;
-	Console.WriteLine("\tTemplateTool -command update SoloNewPlugin");
+	Console.WriteLine("\tTemplateTool -command update NewPlugin");
 	Console.ForegroundColor = InfoColor;
-	WriteFormattedLine("Updates the specified plugin from '{0}\\{1}'.\n", TemplateDir, TemplatePlugin );
+	WriteFormattedLine("Updates the specified plugin from '{0}\\{1}'.\n", Config.TemplateDir, Config.TemplatePlugin );
 
 
 	//////////////////////////////////////////////////
 	/// merge plugin
 
 	Console.ForegroundColor = NormalText;
-	Console.WriteLine("\tTemplateTool -command merge SoloPlugin FilesSubstring");
+	Console.WriteLine("\tTemplateTool -command merge Plugin FilesSubstring");
 	Console.ForegroundColor = InfoColor;
 	WriteFormattedLine("For any files that exist on the target, make a temporary file with a newly cloned update'.");
 	WriteFormattedLine("This is useful for manually merging in any changes from the template plugin.\n");
@@ -114,14 +131,25 @@ void FatalError(String Message)
 	Environment.Exit(1);
 }
 
+// this function gathers all of the files in the given folder
+String[] GatherFiles(String SourceDir, bool SkipIntermediate)
+{
+	// get all of the files in the given 
+	String[] Files = Directory.GetFiles(SourceDir, "*.*", SearchOption.AllDirectories);
+
+	if (SkipIntermediate)
+	{
+		// filter out any files that's in a BINARIES or INTERMEDIATE folder
+		Files = Files.Where(x => !x.Contains("Binaries") && !x.Contains("Intermediate")).ToArray();
+	}
+	return Files;
+}
 
 // get the command line arguments
 string[] Args = Environment.GetCommandLineArgs();
-// get the current working directory
-String CurrentDirectory = Directory.GetCurrentDirectory();
 
 // trim the current directory to the root folder
-String RootDir = CurrentDirectory.Substring(0, CurrentDirectory.IndexOf(RootFolder) + RootFolder.Length);
+String RootDir = CurrentDirectory.Substring(0, CurrentDirectory.IndexOf(Config.RootFolder) + Config.RootFolder.Length);
 
 // scan the command line arguments for the command to execute
 // find the "-command" argument
@@ -146,8 +174,8 @@ String[] RenameFiles(String[] Files, String NewPlugin)
 	// loop through all of the files
 	for (int i = 0; i < Files.Length; i++)
 	{
-		NewFiles[ i ] = Files[i].Replace( TemplatePlugin, NewPlugin );
-		NewFiles[ i ] = NewFiles[i].Replace("Templates\\", SubFolder+"\\");
+		NewFiles[ i ] = Files[i].Replace(Config.TemplatePlugin, NewPlugin );
+		NewFiles[ i ] = NewFiles[i].Replace("Templates\\", Config.SubFolder +"\\");
 
 
 	}
@@ -157,10 +185,10 @@ String[] RenameFiles(String[] Files, String NewPlugin)
 ++CommandIndex;
 String NewPluginName = Args[CommandIndex];
 
-String AbsSourceTemplateDir = RootDir + "\\" + TemplateDir + "\\" + TemplatePlugin;
+String AbsSourceTemplateDir = RootDir + "\\" + Config.TemplateDir + "\\" + Config.TemplatePlugin;
 String[] TemplateFiles = GatherFiles(AbsSourceTemplateDir, true );
 String[] TargetFiles = RenameFiles(TemplateFiles, NewPluginName);
-String TargetDir = RootDir + "\\" + SubFolder + "\\" + NewPluginName;
+String TargetDir = RootDir + "\\" + Config.SubFolder + "\\" + NewPluginName;
 
 int[] FilesToCopy = new int[0];
 // assert that the template and target lists are the same length
@@ -234,7 +262,7 @@ else
 }
 
 string TempAPI = "REPLACEME_API";
-string SourcePluginAPI = (TemplatePlugin + "_API").ToUpper();
+string SourcePluginAPI = (Config.TemplatePlugin + "_API").ToUpper();
 string TargetPluginAPI = (NewPluginName + "_API").ToUpper();
 // copy all of our targeted files
 foreach (int i in FilesToCopy)
@@ -261,7 +289,7 @@ foreach (int i in FilesToCopy)
 
 
 	FileContents = FileContents.Replace(SourcePluginAPI, TempAPI);
-	FileContents = FileContents.Replace(TemplatePlugin, NewPluginName);
+	FileContents = FileContents.Replace(Config.TemplatePlugin, NewPluginName);
 	FileContents = FileContents.Replace(TempAPI, TargetPluginAPI);
 
 	// write the file contents to the target file
